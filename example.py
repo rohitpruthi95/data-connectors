@@ -1,16 +1,16 @@
 #!/usr/bin/python
 
-from sftp_connector import *
+from connectors import *
 
-myConnectionInfo = SFTPConnectionInfo('localhost',22,'dev')
-myConnection = SFTPConnection(myConnectionInfo)
+myConnectionInfo = ConnectionInfo('sftp','localhost',22,'dev',attributes={'privatekeyfile':'~/.ssh/id_rsa'})
 print("Trying to establish connection")
+myConnection = myConnectionInfo.getConnection()
 myConnection.connect()
 print("Connection established")
-myReader = SFTPReader(myConnection)
+myReader = Reader(myConnection)
 myPartitionReader = myReader.createPartitionReader()
 myPartitionReader.read('./Desktop')
-
+myConnection.close()
 # myWriter = SFTPWriter(myConnection)
 # myPartitionWriter = myWriter.createPartitionWriter()
 # myPartitionWriter.write('holla','./Desktop')
