@@ -8,7 +8,17 @@ import subprocess
 import optparse
 import stat
 import errno
+import re
+import tempfile
+import boto
+import shutil
 from multiprocessing.pool import ThreadPool
+
+storage_access_key = "ACCESS_KEY"
+storage_secret_key = "SECRET_KEY"
+
+
+_URI_RE = re.compile(r's3://([^/]+)/?(.*)')
 
 
 #Factory classes and Base Classes
@@ -128,9 +138,34 @@ class SFTPPartitionReader(PartitionReader):
 			pool.join()
 
 class SFTPPartitionWriter(PartitionWriter):
-	def write(self, localPath, sftppath = None, numParallelConnections = 1):
-		localPath = os.path.expanduser(localPath)
-		print 'Copying contents from ' + localPath + ' to ' + sftppath 
+	def write(self, s3_path, sftppath = None, numParallelConnections = 1):
+		tempPath = tempfile.mkdtemp()
+		m = _URI_RE.match(s3_path)
+		boto_conn = boto.connect_s3(aws_access_key_id=storage_access_key,
+                                            aws_secret_access_key=storage_secret_key)
+		bucket_name = m.group(1)
+		bucket = boto_conn.get_bucket(bucket_name)
+		if s3_path.endswith('/') is False:
+		#It is a file
+			key_name = m.group(2)
+			key_instance = bucket.get_key(key_name)
+			localPath = tempPath + os.path.split(key_name)[1]
+			key_instance.get_contents_to_filename(localPath)
+		else:
+		#It is a folder
+			key_prefix = m.group(2)
+			bucket_paths = bucket.list(key_prefix)
+			for l in bucket_paths:
+				keyString = str(l.key)
+				d = tempPath + keyString[len(os.path.split(os.path.normpath(key_prefix))[0]):]
+				try:
+					l.get_contents_to_filename(d)
+				except OSError:
+					os.makedirs(os.path.split(d)[0])
+					l.get_contents_to_filename(d)
+			localPath = tempPath + '/' + os.path.split(key_prefix)[1]
+
+		print 'File Saved Temporarily' 
 		if sftppath is None:
 			sftppath = './'
 		sftp = paramiko.SFTPClient.from_transport(self.transport)
@@ -152,7 +187,6 @@ class SFTPPartitionWriter(PartitionWriter):
 				else:
 					sftp.put(localPath, os.path.join(sftppath, os.path.basename(localPath)))
 			else:
-				print sftppath
 				try:
 					sftp.listdir(os.path.join(sftppath, os.path.basename(localPath)))  # Test if remote_path exists
 				except IOError:
@@ -160,7 +194,10 @@ class SFTPPartitionWriter(PartitionWriter):
 				for file in os.listdir(localPath):
 					recursiveWrite(sftp, os.path.join(localPath, file), os.path.join(sftppath, os.path.basename(localPath)))
 		recursiveWrite(sftp, localPath, sftppath)
+		print 'File '
 		sftp.close()
+		shutil.rmtree(tempPath)
+		print 'Connection closed, temporary files deleted'
 		if (numParallelConnections > 1):
 			pool.close()
 			pool.join()
