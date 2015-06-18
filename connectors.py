@@ -149,7 +149,7 @@ class SFTPPartitionWriter(PartitionWriter):
 		#It is a file
 			key_name = m.group(2)
 			key_instance = bucket.get_key(key_name)
-			localPath = tempPath + os.path.split(key_name)[1]
+			localPath = tempPath + '/' + os.path.split(key_name)[1]
 			key_instance.get_contents_to_filename(localPath)
 		else:
 		#It is a folder
@@ -194,7 +194,7 @@ class SFTPPartitionWriter(PartitionWriter):
 				for file in os.listdir(localPath):
 					recursiveWrite(sftp, os.path.join(localPath, file), os.path.join(sftppath, os.path.basename(localPath)))
 		recursiveWrite(sftp, localPath, sftppath)
-		print 'File '
+		print 'File Written'
 		sftp.close()
 		shutil.rmtree(tempPath)
 		print 'Connection closed, temporary files deleted'
